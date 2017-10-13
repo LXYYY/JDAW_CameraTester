@@ -25,10 +25,18 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
         main.cpp \
-        ctmainwindow.cpp
+        ctmainwindow.cpp \
+    CVCalib.cpp
 
 HEADERS += \
-        ctmainwindow.h
+        ctmainwindow.h \
+    CVClass.h
 
 FORMS += \
         ctmainwindow.ui
+
+INCLUDEPATH += C:/lxy/opencv310/opencv/Release/install/include \
+               C:/lxy/opencv310/opencv/Release/install/include/opencv \
+              C:/lxy/opencv310/opencv/Release/install/include/opencv2
+
+LIBS += C:/lxy/opencv310/opencv/Release/install/x86/mingw/lib/libopencv_*
