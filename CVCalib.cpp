@@ -2,6 +2,7 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <math.h>
+#include "ctmainwindow.h"
 //#include <time.h>
 using namespace std;
 using namespace cv;
@@ -575,33 +576,234 @@ void CVClass::takeAPicture()
 
 void CVClass::startCalc()
 {
-    State=Calc;
+    try{
+    Size imageSize;
+    Mat cameraMatrix, distCoeffs;
+    string outputFilenameL = "paramL.xml";
+    string inputFilename = "";
+
+    int i;
+    size_t nframes;
+    bool undistortImage = false;
+    int flags = 0;
+    VideoCapture capture;
+    //    clock_t prevTimestamp = 0;
+    int mode = DETECTION;
+    int cameraId = 0;
+    vector<vector<Point2f> > imagePoints;
+    vector<string> imageList;
+
+    mode = CAPTURING;
+
+    //    namedWindow("Image View", 1);
+
+    char imgName[20] = "";
+    char outputFilename[20] = "";
+    imgs.clear();
+    int lr = 0;
+    /* for (int lr = 0; lr > 0; lr--)*/ {
+        imgs.clear();
+        imagePoints.clear();
+        mode = CAPTURING;
+        nframes = 0;
+        for (int i = 0;; i++) {
+            if (lr == 0)
+                sprintf(imgName, "imgL%d.jpg", i);
+            else if (lr == 1)
+                sprintf(imgName, "imgR%d.jpg", i);
+            cout << imgName << endl;
+
+            Mat tImg;
+            tImg = imread(imgName, 1);
+            if (!tImg.empty()) {
+                imgs.push_back(tImg);
+            } else {
+                cout << "empty" << endl;
+                break;
+            }
+        }
+        nframes = imgs.size();
+
+        if (lr == 0)
+            sprintf(outputFilename, "paramL.yaml");
+        else if (lr == 1)
+            sprintf(outputFilename, "paramR.yaml");
+        //calibration
+        for (i = 0;; i++) {
+            cout << "imagePoints.size()=" << imagePoints.size()
+                 << " mode=" << mode << " nframes=" << nframes << " lr=" << lr << " " << "i=" << i << endl;
+            Mat view, viewGray;
+            bool blink = false;
+
+            if (i == nframes) {
+                if (imagePoints.size() > 0) {
+                    runAndSave(outputFilename, imagePoints, imageSize,
+                               boardSize, pattern, squareSize, aspectRatio,
+                               flags, cameraMatrix, distCoeffs,
+                               writeExtrinsics, writePoints);
+                }
+                break;
+            }
+
+
+            imgs.at(i).copyTo(view);;
+            imageSize = view.size();
+
+            if (flipVertical)
+                flip(view, view, 0);
+
+            vector<Point2f> pointbuf;
+            cvtColor(view, viewGray, COLOR_BGR2GRAY);
+
+            /////////////////////pattern/////////////////////
+            pattern = CIRCLES_GRID;
+            bool found;
+            switch (pattern) {
+            case CHESSBOARD:
+                found = findChessboardCorners(view, boardSize, pointbuf,
+                                              CALIB_CB_ADAPTIVE_THRESH | CALIB_CB_FAST_CHECK |
+                                              CALIB_CB_NORMALIZE_IMAGE);
+                break;
+            case CIRCLES_GRID:
+                found = findCirclesGrid(view, boardSize, pointbuf);
+                break;
+            case ASYMMETRIC_CIRCLES_GRID:
+                found = findCirclesGrid(view, boardSize, pointbuf, CALIB_CB_ASYMMETRIC_GRID);
+                break;
+            default:
+                break;
+            }
+            ////////////////////////////////////////////////////
+
+            // improve the found corners' coordinate accuracy
+            if (pattern == CHESSBOARD && found)
+            {
+                Mat viewGray;
+                cvtColor(frame, viewGray, COLOR_BGR2GRAY);
+                cornerSubPix(viewGray, pointbuf, Size(11, 11),
+                             Size(-1, -1), TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 30, 0.1));
+            }
+
+
+            if (mode == CAPTURING && found &&
+                    (!capture.isOpened() /*|| clock() - prevTimestamp > delay * 1e-3 * CLOCKS_PER_SEC*/)) {
+                imagePoints.push_back(pointbuf);
+                //                prevTimestamp = clock();
+                blink = capture.isOpened();
+            }
+            cout << pointbuf.size() << endl;
+            if (found)
+                drawChessboardCorners(view, boardSize, Mat(pointbuf), found);
+
+
+            string msg = mode == CAPTURING ? "100/100" :
+                                             mode == CALIBRATED ? "Calibrated" : "Press 'g' to start";
+            int baseLine = 0;
+            Size textSize = getTextSize(msg, 1, 1, 1, &baseLine);
+            Point textOrigin(view.cols - 2 * textSize.width - 10, view.rows - 2 * baseLine - 10);
+
+            if (mode == CAPTURING) {
+                if (undistortImage)
+                    msg = format("%d/%d Undist", (int) imagePoints.size(), nframes);
+                else
+                    msg = format("%d/%d", (int) imagePoints.size(), nframes);
+            }
+
+            putText(view, msg, textOrigin, 1, 1,
+                    mode != CALIBRATED ? Scalar(0, 0, 255) : Scalar(0, 255, 0));
+
+            if (blink)
+                bitwise_not(view, view);
+
+            if (mode == CALIBRATED && undistortImage) {
+                Mat temp = view.clone();
+                undistort(temp, view, cameraMatrix, distCoeffs);
+            }
+
+            //            imshow("Image View", view);
+
+            emit pushWin1(view);
+
+            //            char key = (char) waitKey(capture.isOpened() ? 1 : 1);
+
+            if (mode == CAPTURING && imagePoints.size() >= (unsigned) nframes) {
+                if (runAndSave(outputFilename, imagePoints, imageSize,
+                               boardSize, pattern, squareSize, aspectRatio,
+                               flags, cameraMatrix, distCoeffs,
+                               writeExtrinsics, writePoints))
+                    mode = CALIBRATED;
+                else
+                    mode = DETECTION;
+                if (!capture.isOpened())
+                    break;
+            }
+        }  //calibration
+
+        //show undistorted
+        if (!capture.isOpened() && showUndistorted) {
+            imgsUndistorted.clear();
+            cout << "undistorted  ";
+            Mat view, map1, map2;
+            initUndistortRectifyMap(cameraMatrix, distCoeffs, Mat(),
+                                    getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, imageSize, 1, imageSize, 0),
+                                    imageSize, CV_16SC2, map1, map2);
+
+            for (int i = 0;i < imgs.size();i++) {
+                Mat rview;
+                cout << "check:" << i << endl;
+                view = imgs.at(i);
+                //undistort( view, rview, cameraMatrix, distCoeffs, cameraMatrix );
+                remap(view, rview, map1, map2, INTER_LINEAR);
+                imgsUndistorted.push_back(rview);
+                //                imshow("imgName", rview);
+                emit pushWin2(rview);
+                usleep(1000);
+                //                char c = (char)waitKey(1);
+
+                //                if (c == 27 || c == 'q' || c == 'Q')
+                //                    return 0;
+            }
+        }
+
+        cout << lr << endl;
+
+    }
+    }
+    catch(...)
+    {
+        emit calibrateFailWarn();
+    }
 }
 
 void CVClass::startCapture()
 {
-    State=Capture;
+    capture=capture?false:true;
+    emit stateMonitor(captureID,capture);
 }
 
 void CVClass::startChessboard()
 {
     findChessboard=(findChessboard?false:true);
+    emit stateMonitor(chessboardID,findChessboard);
 }
 
 void CVClass::startBlurCheck()
 {
-    Mat img1,img2;
-    img1=imread("image1.jpg",0);
-    img2=imread("image2.jpg",0);
-    imshow("blur",img2);
-//waitKey(0);
-    Mat tmpBlur;
-    Mat grad;
-//    gradientGray(img1,grad);
-    cout<<"raw:";
-    gradientGray(img2,grad);
-    imshow("grad",img1);
-    waitKey(1);
+    blurCheck=blurCheck?false:true;
+    emit stateMonitor(blurCheckID,blurCheck);
+
+}
+
+void CVClass::setCameraParam(int propId,double value)
+{
+    cam.set(propId,value);
+}
+
+void CVClass::getCameraParam(int propId)
+{
+    double value;
+    value=cam.get(propId);
+    emit showCameraParam(value);
 }
 
 bool CVClass::camCalib(void) {
@@ -610,231 +812,42 @@ bool CVClass::camCalib(void) {
     int cnt = 0;
     Mat tFrameL, tFrameR;
     boardSize = Size(5, 5);
-    State=Capture;
-    while (State==Capture) {
-        getImage();
-        if(false)
+    while(1)
+    {
+        if(capture)
         {
-            vector<Point2f> pointbuf;
-            bool found=false;
-            found = findChessboardCorners(frame, boardSize, pointbuf);
-            if (found) {
+            getImage();
+            if(findChessboard)
+            {
+                vector<Point2f> pointbuf;
+                bool found=false;
+                found = findChessboardCorners(frame, boardSize, pointbuf);
+                if (found) {
 
-                drawChessboardCorners(frame, boardSize, Mat(pointbuf), found);
+                    drawChessboardCorners(frame, boardSize, Mat(pointbuf), found);
+                }
             }
+            resize(frame, tFrameL, Size(640, 480));
+            //        imshow("camL", tFrameL);
+            cvtColor(tFrameL,tFrameL,COLOR_BGR2RGB);
+            emit pushWin1(tFrameL);
+            //        Mat tmpBlur;
+            if(blurCheck){
+                Mat grad;
+                cvtColor(tFrameL,tFrameL,COLOR_RGB2GRAY);
+                gradientGray(tFrameL,grad);
+            }
+            //        emit showBlurParam(blurParam);
+            //        cout<<"gaussian:";
+            //        gradientGray(tmpBlur,grad);
+            //        imshow("grad",grad);
+            //        imshow("blur",tmpBlur);
+            waitKey(1);
         }
-        resize(frame, tFrameL, Size(640, 480));
-        //        imshow("camL", tFrameL);
-        cvtColor(tFrameL,tFrameL,COLOR_BGR2RGB);
-        emit pushWin1(tFrameL);
-//        Mat tmpBlur;
-        Mat grad;
-        cvtColor(tFrameL,tFrameL,COLOR_RGB2GRAY);
-//        GaussianBlur(tFrameL,tmpBlur,Size(3,3),1);
-        /*float blurParam=*/gradientGray(tFrameL,grad);
-//        emit showBlurParam(blurParam);
-//        cout<<"gaussian:";
-//        gradientGray(tmpBlur,grad);
-//        imshow("grad",grad);
-//        imshow("blur",tmpBlur);
-        waitKey(1);
     }
 
 #endif
-    if(State==Calc)
-    {
-        Size imageSize;
-        Mat cameraMatrix, distCoeffs;
-        string outputFilenameL = "paramL.xml";
-        string inputFilename = "";
 
-        int i;
-        size_t nframes;
-        bool undistortImage = false;
-        int flags = 0;
-        VideoCapture capture;
-        //    clock_t prevTimestamp = 0;
-        int mode = DETECTION;
-        int cameraId = 0;
-        vector<vector<Point2f> > imagePoints;
-        vector<string> imageList;
-
-        mode = CAPTURING;
-
-        //    namedWindow("Image View", 1);
-
-        char imgName[20] = "";
-        char outputFilename[20] = "";
-        imgs.clear();
-        int lr = 0;
-        /* for (int lr = 0; lr > 0; lr--)*/ {
-            imgs.clear();
-            imagePoints.clear();
-            mode = CAPTURING;
-            nframes = 0;
-            for (int i = 0;; i++) {
-                if (lr == 0)
-                    sprintf(imgName, "imgL%d.jpg", i);
-                else if (lr == 1)
-                    sprintf(imgName, "imgR%d.jpg", i);
-                cout << imgName << endl;
-
-                Mat tImg;
-                tImg = imread(imgName, 1);
-                if (!tImg.empty()) {
-                    imgs.push_back(tImg);
-                } else {
-                    cout << "empty" << endl;
-                    break;
-                }
-            }
-            nframes = imgs.size();
-
-            if (lr == 0)
-                sprintf(outputFilename, "paramL.yaml");
-            else if (lr == 1)
-                sprintf(outputFilename, "paramR.yaml");
-            //calibration
-            for (i = 0;; i++) {
-                cout << "imagePoints.size()=" << imagePoints.size()
-                     << " mode=" << mode << " nframes=" << nframes << " lr=" << lr << " " << "i=" << i << endl;
-                Mat view, viewGray;
-                bool blink = false;
-
-                if (i == nframes) {
-                    if (imagePoints.size() > 0) {
-                        runAndSave(outputFilename, imagePoints, imageSize,
-                                   boardSize, pattern, squareSize, aspectRatio,
-                                   flags, cameraMatrix, distCoeffs,
-                                   writeExtrinsics, writePoints);
-                    }
-                    break;
-                }
-
-
-                imgs.at(i).copyTo(view);;
-                imageSize = view.size();
-
-                if (flipVertical)
-                    flip(view, view, 0);
-
-                vector<Point2f> pointbuf;
-                cvtColor(view, viewGray, COLOR_BGR2GRAY);
-
-                /////////////////////pattern/////////////////////
-                pattern = CIRCLES_GRID;
-                bool found;
-                switch (pattern) {
-                case CHESSBOARD:
-                    found = findChessboardCorners(view, boardSize, pointbuf,
-                                                  CALIB_CB_ADAPTIVE_THRESH | CALIB_CB_FAST_CHECK |
-                                                  CALIB_CB_NORMALIZE_IMAGE);
-                    break;
-                case CIRCLES_GRID:
-                    found = findCirclesGrid(view, boardSize, pointbuf);
-                    break;
-                case ASYMMETRIC_CIRCLES_GRID:
-                    found = findCirclesGrid(view, boardSize, pointbuf, CALIB_CB_ASYMMETRIC_GRID);
-                    break;
-                default:
-                    return fprintf(stderr, "Unknown pattern type\n"), -1;
-                }
-                ////////////////////////////////////////////////////
-
-                // improve the found corners' coordinate accuracy
-                if (pattern == CHESSBOARD && found)
-                {
-                    Mat viewGray;
-                    cvtColor(frame, viewGray, COLOR_BGR2GRAY);
-                    cornerSubPix(viewGray, pointbuf, Size(11, 11),
-                                 Size(-1, -1), TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 30, 0.1));
-                }
-
-
-                if (mode == CAPTURING && found &&
-                        (!capture.isOpened() /*|| clock() - prevTimestamp > delay * 1e-3 * CLOCKS_PER_SEC*/)) {
-                    imagePoints.push_back(pointbuf);
-                    //                prevTimestamp = clock();
-                    blink = capture.isOpened();
-                }
-                cout << pointbuf.size() << endl;
-                if (found)
-                    drawChessboardCorners(view, boardSize, Mat(pointbuf), found);
-
-
-                string msg = mode == CAPTURING ? "100/100" :
-                                                 mode == CALIBRATED ? "Calibrated" : "Press 'g' to start";
-                int baseLine = 0;
-                Size textSize = getTextSize(msg, 1, 1, 1, &baseLine);
-                Point textOrigin(view.cols - 2 * textSize.width - 10, view.rows - 2 * baseLine - 10);
-
-                if (mode == CAPTURING) {
-                    if (undistortImage)
-                        msg = format("%d/%d Undist", (int) imagePoints.size(), nframes);
-                    else
-                        msg = format("%d/%d", (int) imagePoints.size(), nframes);
-                }
-
-                putText(view, msg, textOrigin, 1, 1,
-                        mode != CALIBRATED ? Scalar(0, 0, 255) : Scalar(0, 255, 0));
-
-                if (blink)
-                    bitwise_not(view, view);
-
-                if (mode == CALIBRATED && undistortImage) {
-                    Mat temp = view.clone();
-                    undistort(temp, view, cameraMatrix, distCoeffs);
-                }
-
-                //            imshow("Image View", view);
-
-                emit pushWin1(view);
-
-                //            char key = (char) waitKey(capture.isOpened() ? 1 : 1);
-
-                if (mode == CAPTURING && imagePoints.size() >= (unsigned) nframes) {
-                    if (runAndSave(outputFilename, imagePoints, imageSize,
-                                   boardSize, pattern, squareSize, aspectRatio,
-                                   flags, cameraMatrix, distCoeffs,
-                                   writeExtrinsics, writePoints))
-                        mode = CALIBRATED;
-                    else
-                        mode = DETECTION;
-                    if (!capture.isOpened())
-                        break;
-                }
-            }  //calibration
-
-            //show undistorted
-            if (!capture.isOpened() && showUndistorted) {
-                imgsUndistorted.clear();
-                cout << "undistorted  ";
-                Mat view, map1, map2;
-                initUndistortRectifyMap(cameraMatrix, distCoeffs, Mat(),
-                                        getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, imageSize, 1, imageSize, 0),
-                                        imageSize, CV_16SC2, map1, map2);
-
-                for (int i = 0;i < imgs.size();i++) {
-                    Mat rview;
-                    cout << "check:" << i << endl;
-                    view = imgs.at(i);
-                    //undistort( view, rview, cameraMatrix, distCoeffs, cameraMatrix );
-                    remap(view, rview, map1, map2, INTER_LINEAR);
-                    imgsUndistorted.push_back(rview);
-                    //                imshow("imgName", rview);
-                    emit pushWin2(rview);
-                    usleep(1000);
-                    //                char c = (char)waitKey(1);
-
-                    //                if (c == 27 || c == 'q' || c == 'Q')
-                    //                    return 0;
-                }
-            }
-
-            cout << lr << endl;
-
-        }
-    }
     return false;
 }
 

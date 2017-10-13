@@ -203,14 +203,18 @@ public:
     vector<objBox3D> processStereo();
 
     int cnt=0;
-    enum StateE{Hang=0,Capture,Calc} State;
+    bool capture=false;
     bool findChessboard=false;
+    bool blurCheck=false;
     float gradientGray(Mat &src, Mat &mag);
 
 signals:
     void pushWin1(Mat img);
     void pushWin2(Mat img);
     void showBlurParam(float br);
+    void calibrateFailWarn(void);
+    void stateMonitor(int id,int state);
+    void showCameraParam(double);
 
 private slots:
     void takeAPicture(void);
@@ -218,6 +222,7 @@ private slots:
     void startCapture(void);
     void startChessboard(void);
     void startBlurCheck(void);
-
+    void setCameraParam(int propId,double value);
+    void getCameraParam(int propId);
 };
 

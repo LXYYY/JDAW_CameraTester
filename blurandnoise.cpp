@@ -46,7 +46,9 @@ float CVClass::gradientGray(Mat &src, Mat &mag)
             mag.at<byte>(j, k) = min(Ix.at<int>(j,k) + Iy.at<int>(j, k), 255);
         }*/
     convertScaleAbs(min(Ix + Iy, 255), mag); //这句话和上面的for循环是同样的功能
-    imshow("mag",mag);
+    Mat tmp;
+    cvtColor(mag,tmp,COLOR_GRAY2RGB);
+    emit pushWin2(tmp);
     for(int i=0;i<src.rows;i++){
         for(int j=0;j<src.cols;j++){
             Gmean+=mag.at<byte>(i,j);
@@ -64,25 +66,27 @@ float CVClass::gradientGray(Mat &src, Mat &mag)
         }
     }
 
-    unsigned long BlurCnt=1;
-    unsigned long SumBlur=0;
+    long BlurCnt=1;
+    long SumBlur=0;
     float Tbr=0.5;
     for(int i=0;i<src.rows;i++){
         for(int j=0;j<src.cols;j++){
             if(mag.at<byte>(i,j)>0){
-                BlurCnt++;
+                BlurCnt+=1;
                 int A=(mag.at<byte>(i-1,j)+mag.at<byte>(i+1,j)+mag.at<byte>(i,j-1)+mag.at<byte>(i,j+1))/4;
                 float BR=fabs(mag.at<byte>(i,j)-A)/(float)A;
                 if(BR>Tbr){
 //                    cout<<"check"<<endl;
-                    SumBlur++;
+                    SumBlur+=1;
                 }
             }
 //            cout<<"test"<<(int)mag.at<byte>(i,j)<<endl;
         }
     }
 //    cout<<SumBlur<<" "<<BlurCnt<<endl;
-    cout<<"ratio"<<((float)SumBlur/BlurCnt)<<endl;
-    emit showBlurParam(((float)SumBlur/BlurCnt));
+//    cout<<"ratio"<<((float)SumBlur/BlurCnt)<<endl;
+//    if(SumBlur>100&&BlurCnt>100){
+     emit showBlurParam(((float)SumBlur/BlurCnt));
+//        }
 
 }
