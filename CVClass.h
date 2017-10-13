@@ -204,14 +204,20 @@ public:
 
     int cnt=0;
     enum StateE{Hang=0,Capture,Calc} State;
+    bool findChessboard=false;
+    float gradientGray(Mat &src, Mat &mag);
 
 signals:
     void pushWin1(Mat img);
     void pushWin2(Mat img);
+    void showBlurParam(float br);
 
 private slots:
     void takeAPicture(void);
     void startCalc(void);
     void startCapture(void);
+    void startChessboard(void);
+    void startBlurCheck(void);
+
 };
 

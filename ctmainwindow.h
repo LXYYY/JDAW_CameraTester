@@ -28,11 +28,17 @@ private slots:
 
     void on_CalcButton_clicked();
 
+    void on_ChessboardButton_clicked();
+
+    void on_BlurCheckButton_clicked();
+
+    void showBlurParam(float br);
 signals:
     void takeAPicture(void);
     void startCalc(void);
     void startCapture(void);
-
+    void startChessboard(void);
+    void startBlurCheck(void);
 private:
     Ui::CTMainWindow *ui;
 };

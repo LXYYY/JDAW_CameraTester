@@ -554,7 +554,7 @@ bool CVClass::runAndSave(const string &outputFilename,
 
 void CVClass::run()
 {
-    cam = VideoCapture(0);
+    cam = VideoCapture(2);
     camCalib();
 }
 
@@ -583,25 +583,61 @@ void CVClass::startCapture()
     State=Capture;
 }
 
+void CVClass::startChessboard()
+{
+    findChessboard=(findChessboard?false:true);
+}
+
+void CVClass::startBlurCheck()
+{
+    Mat img1,img2;
+    img1=imread("image1.jpg",0);
+    img2=imread("image2.jpg",0);
+    imshow("blur",img2);
+//waitKey(0);
+    Mat tmpBlur;
+    Mat grad;
+//    gradientGray(img1,grad);
+    cout<<"raw:";
+    gradientGray(img2,grad);
+    imshow("grad",img1);
+    waitKey(1);
+}
+
 bool CVClass::camCalib(void) {
 #if 1
     char imgR[10] = "";
     int cnt = 0;
     Mat tFrameL, tFrameR;
-
+    boardSize = Size(5, 5);
+    State=Capture;
     while (State==Capture) {
         getImage();
-        vector<Point2f> pointbuf;
-        bool found=false;
-        found = findChessboardCorners(frame, boardSize, pointbuf);
-        if (found) {
+        if(false)
+        {
+            vector<Point2f> pointbuf;
+            bool found=false;
+            found = findChessboardCorners(frame, boardSize, pointbuf);
+            if (found) {
 
-            drawChessboardCorners(frame, boardSize, Mat(pointbuf), found);
+                drawChessboardCorners(frame, boardSize, Mat(pointbuf), found);
+            }
         }
         resize(frame, tFrameL, Size(640, 480));
         //        imshow("camL", tFrameL);
         cvtColor(tFrameL,tFrameL,COLOR_BGR2RGB);
         emit pushWin1(tFrameL);
+//        Mat tmpBlur;
+        Mat grad;
+        cvtColor(tFrameL,tFrameL,COLOR_RGB2GRAY);
+//        GaussianBlur(tFrameL,tmpBlur,Size(3,3),1);
+        /*float blurParam=*/gradientGray(tFrameL,grad);
+//        emit showBlurParam(blurParam);
+//        cout<<"gaussian:";
+//        gradientGray(tmpBlur,grad);
+//        imshow("grad",grad);
+//        imshow("blur",tmpBlur);
+        waitKey(1);
     }
 
 #endif

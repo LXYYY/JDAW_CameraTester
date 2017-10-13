@@ -26,7 +26,8 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         main.cpp \
         ctmainwindow.cpp \
-    CVCalib.cpp
+    CVCalib.cpp \
+    blurandnoise.cpp
 
 HEADERS += \
         ctmainwindow.h \
