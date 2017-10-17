@@ -3,6 +3,7 @@
 #include <iostream>
 #include <math.h>
 #include "ctmainwindow.h"
+#include <string>
 //#include <time.h>
 using namespace std;
 using namespace cv;
@@ -555,7 +556,7 @@ bool CVClass::runAndSave(const string &outputFilename,
 
 void CVClass::run()
 {
-    cam = VideoCapture(2);
+    cam.open(cameraID);
     camCalib();
 }
 
@@ -567,11 +568,11 @@ bool CVClass::getImage(void)
 
 void CVClass::takeAPicture()
 {
-    char imgL[10] = "";
-    sprintf(imgL, "imgL%d.jpg", cnt);
-    imwrite(imgL, frame);
-    cout << cnt << endl;
-    cnt++;
+    frame.copyTo(chessboard);
+    imgs.push_back(chessboard);
+    resize(frame,frame,Size(640,480));
+    cvtColor(frame,frame,COLOR_BGR2RGB);
+    emit pushWin2(frame);
 }
 
 void CVClass::startCalc()
@@ -598,36 +599,55 @@ void CVClass::startCalc()
     //    namedWindow("Image View", 1);
 
     char imgName[20] = "";
-    char outputFilename[20] = "";
-    imgs.clear();
+    string outputFilename ;
     int lr = 0;
     /* for (int lr = 0; lr > 0; lr--)*/ {
-        imgs.clear();
+        vector<Mat> sImgs;
         imagePoints.clear();
         mode = CAPTURING;
         nframes = 0;
-        for (int i = 0;; i++) {
-            if (lr == 0)
-                sprintf(imgName, "imgL%d.jpg", i);
-            else if (lr == 1)
-                sprintf(imgName, "imgR%d.jpg", i);
-            cout << imgName << endl;
 
-            Mat tImg;
-            tImg = imread(imgName, 1);
-            if (!tImg.empty()) {
-                imgs.push_back(tImg);
-            } else {
-                cout << "empty" << endl;
-                break;
-            }
+        Mat tmpChess;
+        Mat tmpMask=Mat::zeros(chessboard.rows,chessboard.cols,CV_8UC1);
+        for(int n=0;n<imgs.size();n++){
+            tmpMask(Rect(Point(0,0),Point(chessboard.cols/2,chessboard.rows/2))).setTo(255);
+            imgs.at(i).copyTo(tmpChess,tmpMask);
+            sImgs.push_back(tmpChess);
+
+            tmpMask(Rect(Point(chessboard.cols/2,0),Point(chessboard.cols,chessboard.rows/2))).setTo(255);
+            imgs.at(i).copyTo(tmpChess,tmpMask);
+            sImgs.push_back(tmpChess);
+
+            tmpMask(Rect(Point(0,chessboard.rows/2),Point(chessboard.cols/2,chessboard.rows))).setTo(255);
+            imgs.at(i).copyTo(tmpChess,tmpMask);
+            sImgs.push_back(tmpChess);
+
+            tmpMask(Rect(Point(chessboard.cols/2,chessboard.rows/2),Point(chessboard.cols,chessboard.rows))).setTo(255);
+            imgs.at(i).copyTo(tmpChess,tmpMask);
+            sImgs.push_back(tmpChess);
+
+            nframes=imgs.size()*4;
         }
-        nframes = imgs.size();
+        //        for (int i = 0;; i++) {
+//            if (lr == 0)
+//                sprintf(imgName, "imgL%d.jpg", i);
+//            else if (lr == 1)
+//                sprintf(imgName, "imgR%d.jpg", i);
+//            cout << imgName << endl;
 
-        if (lr == 0)
-            sprintf(outputFilename, "paramL.yaml");
-        else if (lr == 1)
-            sprintf(outputFilename, "paramR.yaml");
+//            Mat tImg;
+//            tImg = imread(imgName, 1);
+//            if (!tImg.empty()) {
+//                imgs.push_back(tImg);
+//            } else {
+//                cout << "empty" << endl;
+//                break;
+//            }
+//        }
+//        nframes = imgs.size();
+
+        outputFilename=cameraName+(".yaml");
+//        sprintf(outputFilename, "paramR.yaml");
         //calibration
         for (i = 0;; i++) {
             cout << "imagePoints.size()=" << imagePoints.size()
@@ -646,7 +666,7 @@ void CVClass::startCalc()
             }
 
 
-            imgs.at(i).copyTo(view);;
+            sImgs.at(i).copyTo(view);;
             imageSize = view.size();
 
             if (flipVertical)
@@ -656,7 +676,6 @@ void CVClass::startCalc()
             cvtColor(view, viewGray, COLOR_BGR2GRAY);
 
             /////////////////////pattern/////////////////////
-            pattern = CIRCLES_GRID;
             bool found;
             switch (pattern) {
             case CHESSBOARD:
@@ -722,7 +741,7 @@ void CVClass::startCalc()
 
             //            imshow("Image View", view);
 
-            emit pushWin1(view);
+//            emit (view);
 
             //            char key = (char) waitKey(capture.isOpened() ? 1 : 1);
 
@@ -738,6 +757,8 @@ void CVClass::startCalc()
                     break;
             }
         }  //calibration
+
+        emit showIntrinsicParam(cameraMatrix,distCoeffs);
 
         //show undistorted
         if (!capture.isOpened() && showUndistorted) {
@@ -768,6 +789,7 @@ void CVClass::startCalc()
         cout << lr << endl;
 
     }
+    imgs.clear();
     }
     catch(...)
     {
@@ -806,36 +828,83 @@ void CVClass::getCameraParam(int propId)
     emit showCameraParam(value);
 }
 
+void CVClass::setCameraName(string id)
+{
+    cameraName=id;
+}
+
+void CVClass::setCameraID(int id)
+{
+    cameraID=id;
+}
+
 bool CVClass::camCalib(void) {
 #if 1
     char imgR[10] = "";
     int cnt = 0;
-    Mat tFrameL, tFrameR;
-    boardSize = Size(5, 5);
+    Mat tFrame, tFrameR;
     while(1)
     {
+        cout<<"running"<<endl;
         if(capture)
         {
             getImage();
+            frame.copyTo(tFrame);
+
             if(findChessboard)
             {
+                rectangle(tFrame,Rect(Point(0,0),Point(tFrame.cols/2,tFrame.rows/2)),Scalar(0,0,255));
+                rectangle(tFrame,Rect(Point(tFrame.cols/2,0),Point(tFrame.cols,tFrame.rows/2)),Scalar(0,0,255));
+                rectangle(tFrame,Rect(Point(0,tFrame.rows/2),Point(tFrame.cols/2,tFrame.rows)),Scalar(0,0,255));
+                rectangle(tFrame,Rect(Point(tFrame.cols/2,tFrame.rows/2),Point(tFrame.cols,tFrame.rows)),Scalar(0,0,255));
                 vector<Point2f> pointbuf;
                 bool found=false;
-                found = findChessboardCorners(frame, boardSize, pointbuf);
+                found = findChessboardCorners(tFrame(Rect(Point(0,0),Point(tFrame.cols/2,tFrame.rows/2))), boardSize, pointbuf);
                 if (found) {
 
-                    drawChessboardCorners(frame, boardSize, Mat(pointbuf), found);
+                    drawChessboardCorners(tFrame(Rect(Point(0,0),Point(tFrame.cols/2,tFrame.rows/2))), boardSize, Mat(pointbuf), found);
+                }
+
+                found=false;
+                found = findChessboardCorners(tFrame(Rect(Point(tFrame.cols/2,0),Point(tFrame.cols,tFrame.rows/2))), boardSize, pointbuf);
+                if (found) {
+
+                    drawChessboardCorners(tFrame(Rect(Point(tFrame.cols/2,0),Point(tFrame.cols,tFrame.rows/2))), boardSize, Mat(pointbuf), found);
+                }
+
+                found=false;
+                found = findChessboardCorners(tFrame(Rect(Point(0,tFrame.rows/2),Point(tFrame.cols/2,tFrame.rows))), boardSize, pointbuf);
+                if (found) {
+
+                    drawChessboardCorners(tFrame(Rect(Point(0,tFrame.rows/2),Point(tFrame.cols/2,tFrame.rows))), boardSize, Mat(pointbuf), found);
+                }
+
+                found=false;
+                found = findChessboardCorners(tFrame(Rect(Point(tFrame.cols/2,tFrame.rows/2),Point(tFrame.cols,tFrame.rows))), boardSize, pointbuf);
+                if (found) {
+
+                    drawChessboardCorners(tFrame(Rect(Point(tFrame.cols/2,tFrame.rows/2),Point(tFrame.cols,tFrame.rows))), boardSize, Mat(pointbuf), found);
                 }
             }
-            resize(frame, tFrameL, Size(640, 480));
-            //        imshow("camL", tFrameL);
-            cvtColor(tFrameL,tFrameL,COLOR_BGR2RGB);
-            emit pushWin1(tFrameL);
+
+            Mat adaptive;
+
+            cvtColor(tFrame,adaptive,COLOR_BGR2GRAY);
+//            adaptiveThreshold(adaptive,adaptive,255,ADAPTIVE_THRESH_MEAN_C,THRESH_BINARY,5,1.5);
+            threshold(adaptive,adaptive,100,255,THRESH_OTSU);
+//            imshow("test",adaptive);
+
+            resize(tFrame, tFrame, Size(640, 480));
+            cvtColor(tFrame,tFrame,COLOR_BGR2RGB);
+//            waitKey(1);
+//                    imshow("camL", tFrame);
+            emit pushWin1(tFrame);
+            usleep(1000);
             //        Mat tmpBlur;
             if(blurCheck){
                 Mat grad;
-                cvtColor(tFrameL,tFrameL,COLOR_RGB2GRAY);
-                gradientGray(tFrameL,grad);
+                cvtColor(tFrame,tFrame,COLOR_RGB2GRAY);
+                gradientGray(tFrame,grad);
             }
             //        emit showBlurParam(blurParam);
             //        cout<<"gaussian:";

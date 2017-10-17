@@ -57,8 +57,8 @@ private:
     enum Pattern {
         CHESSBOARD, CIRCLES_GRID, ASYMMETRIC_CIRCLES_GRID
     };
-    Size boardSize = Size(7, 7);
-    Pattern pattern = CIRCLES_GRID;
+    Size boardSize = Size(4, 4);
+    Pattern pattern = CHESSBOARD;
     float squareSize = 100;
     float aspectRatio = 1;
     bool writeExtrinsics = true;
@@ -202,19 +202,23 @@ public:
 
     vector<objBox3D> processStereo();
 
+    Mat chessboard;
     int cnt=0;
     bool capture=false;
     bool findChessboard=false;
     bool blurCheck=false;
     float gradientGray(Mat &src, Mat &mag);
+    string cameraName;
+    int cameraID=0;
 
 signals:
     void pushWin1(Mat img);
     void pushWin2(Mat img);
-    void showBlurParam(float br);
+    void showBlurParam(float br,float noise);
     void calibrateFailWarn(void);
     void stateMonitor(int id,int state);
     void showCameraParam(double);
+    void showIntrinsicParam(Mat cameraMatrix, Mat distCoeffs);
 
 private slots:
     void takeAPicture(void);
@@ -224,5 +228,7 @@ private slots:
     void startBlurCheck(void);
     void setCameraParam(int propId,double value);
     void getCameraParam(int propId);
+    void setCameraName(string id);
+    void setCameraID(int id);
 };
 
